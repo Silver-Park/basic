@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>동그라미 숫자 빈도 분석기</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-2 sm:p-4">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-xl sm:text-3xl font-bold text-center mb-3 text-indigo-800">
+            🔢 동그라미 숫자 빈도 분석기
+        </h1>
+
+        <div class="bg-white rounded-lg shadow-lg p-3 mb-3">
+            <label class="block text-base font-semibold mb-2 text-gray-700">
+                데이터 입력 (자유 형식)
+            </label>
+            <p class="text-xs text-gray-600 mb-2">
+                동그라미 숫자 6개가 1줄입니다. 숫자나 공백은 무시되며 동그라미 숫자만 추출됩니다.<br/>
+                예: ⑥⑪ 4.6 ⑥④ 6.8 ⑥③ 7.3 (이렇게 입력해도 자동으로 ⑥⑪⑥④⑥③로 인식)
+            </p>
+            <textarea
+                id="inputData"
+                class="w-full h-40 p-3 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none font-mono text-sm"
+                placeholder="예시:
+⑥⑪ 4.6 ⑥④ 6.8 ⑥③ 7.3
+⑥⑤ 8.5 ⑪⑥ 11.6 ⑥② 13.5"
+            ></textarea>
+            <button
+                onclick="analyzeData()"
+                class="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 text-base active:bg-indigo-800"
+            >
+                분석하기
+            </button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        let results = null;
+        let lowestBetting = null;
+        let topPairsAnalysis = null;
+        let top3Analysis = null;
+
+        function analyzeData() {
+            const inputData = document.getElementById('inputData').value;
+            
+            if (!inputData.trim()) {
+                alert('데이터를 입력해주세요!');
+                return;
+            }
+
+            const circledNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩', '⑪', '⑫', '⑬', '⑭', '⑮', '⑯'];
+            
+            const pairs = [];
+            const dividends = [];
+            
+            const tokens = inputData.match(/[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯]|[\d.]+/g) || [];
+            
+            for (let i = 0; i < tokens.length - 2; i++) {
+                if (circledNumbers.includes(tokens[i]) && 
+                    circledNumbers.includes(tokens[i + 1]) &&
+                    !isNaN(parseFloat(tokens[i + 2]))) {
+                    pairs.push(tokens[i] + tokens[i + 1]);
+                    dividends.push(parseFloat(tokens[i + 2]));
+                }
+            }
+            
+            const sortedData = pairs.map((pair, idx) => ({
+                pair: pair,
+                dividend: dividends[idx]
+            })).sort((a, b) => a.dividend - b.dividend);
+            
+            // 1&2: 최저배당 분석
+            let lowest1 = null;
+            let lowest2 = null;
+            let crossPoint = null;
+            let ratio = null;
+            
+            if (sortedData.length >= 2) {
+                lowest1 = sortedData[0];
+                lowest2 = sortedData[1];
+                
+                const num1_1 = lowest1.pair[0];
+                const num1_2 = lowest1.pair[1];
+                const num2_1 = lowest2.pair[0];
+                const num2_2 = lowest2.pair[1];
+                
+                let crossNum1, crossNum2;
+                
+                if (num1_1 === num2_1) {
+                    crossNum1 = num1_2;
+                    crossNum2 = num2_2;
+                } else if (num1_1 === num2_2) {
+                    crossNum1 = num1_2;
+                    crossNum2 = num2_1;
+                } else if (num1_2 === num2_1) {
+                    crossNum1 = num1_1;
+                    crossNum2 = num2_2;
+                } else if (num1_2 === num2_2) {
+                    crossNum1 = num1_1;
+                    crossNum2 = num2_1;
+                }
+                
+                const crossPair1 = crossNum1 + crossNum2;
+                const crossPair2 = crossNum2 + crossNum1;
+                
+                const crossIdx1 = pairs.indexOf(crossPair1);
+                const crossIdx2 = pairs.indexOf(crossPair2);
+                
+                if (crossIdx1 !== -1) {
+                    crossPoint = {
+                        pair: crossPair1,
+                        dividend: dividends[crossIdx1]
+                    };
+                } else if (crossIdx2 !== -1) {
+                    crossPoint = {
+                        pair: crossPair2,
+                        dividend: dividends[crossIdx2]
+                    };
+                }
+                
+                if (crossPoint) {
+                    ratio = ((lowest1.dividend * lowest2.dividend) / crossPoint.dividend).toFixed(6);
+                }
+                
+                lowestBetting = {
+                    lowest1: lowest1,
+                    lowest2: lowest2,
+                    crossPoint: crossPoint,
+                    ratio: ratio
+                };
+            } else {
+                lowestBetting = null;
+            }
+            
+            // 상위 3개 짝비중 분석 (2&3)
+            if (sortedData.length >= 3 && lowest1 && lowest2 && crossPoint) {
+                const sum = lowest1.dividend + lowest2.dividend + crossPoint.dividend;
+                
+                topPairsAnalysis = {
+                    items: [
+                        {
+                            rank: 1,
+                            pair: lowest1.pair,
+                            dividend: lowest1.dividend,
+                            proportion: (lowest1.dividend / sum) * 100,
+                            label: '1번짝'
+                        },
+                        {
+                            rank: 2,
+                            pair: lowest2.pair,
+                            dividend: lowest2.dividend,
+                            proportion: (lowest2.dividend / sum) * 100,
+                            label: '2번짝'
+                        },
+                        {
+                            rank: 3,
+                            pair: crossPoint.pair,
+                            dividend: crossPoint.dividend,
+                            proportion: (crossPoint.dividend / sum) * 100,
+                            label: '3번짝'
+                        }
+                    ]
+                };
+            } else {
+                topPairsAnalysis = null;
+            }
+            
+            // 전체 데이터 중 상위 3개 (3&4)
+            if (sortedData.length >= 3) {
+                const allTop3 = sortedData.slice(0, 3);
+                const sumTop3 = allTop3.reduce((sum, item) => sum + item.dividend, 0);
+                
+                top3Analysis = {
+                    items: allTop3.map((item, idx) => ({
+                        rank: idx + 1,
+                        pair: item.pair,
+                        dividend: item.dividend,
+                        proportion: (item.dividend / sumTop3) * 100
+                    }))
+                };
+            }
+            
+            const allCircledNums = [];
+            for (let char of inputData) {
+                if (circledNumbers.includes(char)) {
+                    allCircledNums.push(char);
+                }
+            }
+            
+            const lines = [];
+            for (let i = 0; i < allCircledNums.length; i += 6) {
+                const lineNums = allCircledNums.slice(i, i + 6);
+                if (lineNums.length > 0) {
+                    lines.push(lineNums.join(' '));
+                }
+            }
+            
+            const countNumbers = (text) => {
+                const counts = {};
+                circledNumbers.forEach(num => {
+                    const matches = text.match(new RegExp(num, 'g'));
+                    counts[num] = matches ? matches.length : 0;
+                });
+                return counts;
+            };
+
+            const lines1to3 = lines.slice(0, 3).join('\n');
+            const result1to3 = countNumbers(lines1to3);
+
+            const lines4to6 = lines.slice(3, 6).join('\n');
+            const result4to6 = countNumbers(lines4to6);
+
+            const lines7to10 = lines.slice(6, 10).join('\n');
+            const result7to10 = countNumbers(lines7to10);
+
+            const lines1to10 = lines.slice(0, 10).join('\n');
+            const result1to10 = countNumbers(lines1to10);
+
+            let result11to13 = null;
+            let result14to16 = null;
+            let result17to20 = null;
+            let result11to20 = null;
+            let resultCumulative20 = null;
+
+            if (lines.length > 10) {
+                const lines11to13 = lines.slice(10, 13).join('\n');
+                result11to13 = countNumbers(lines11to13);
+
+                const lines14to16 = lines.slice(13, 16).join('\n');
+                result14to16 = countNumbers(lines14to16);
+
+                const lines17to20 = lines.slice(16, 20).join('\n');
+                result17to20 = countNumbers(lines17to20);
+
+                const lines11to20 = lines.slice(10, 20).join('\n');
+                result11to20 = countNumbers(lines11to20);
+
+                const allLines20 = lines.slice(0, 20).join('\n');
+                resultCumulative20 = countNumbers(allLines20);
+            }
+
+            let result21to23 = null;
+            let result24to26 = null;
+            let result27to30 = null;
+            let result21to30 = null;
+            let resultCumulative30 = null;
+
+            if (lines.length > 20) {
+                const lines21to23 = lines.slice(20, 23).join('\n');
+                result21to23 = countNumbers(lines21to23);
+
+                const lines24to26 = lines.slice(23, 26).join('\n');
+                result24to26 = countNumbers(lines24to26);
+
+                const lines27to30 = lines.slice(26, 30).join('\n');
+                result27to30 = countNumbers(lines27to30);
+
+                const lines21to30 = lines.slice(20, 30).join('\n');
+                result21to30 = countNumbers(lines21to30);
+
+                const allLines30 = lines.slice(0, 30).join('\n');
+                resultCumulative30 = countNumbers(allLines30);
+            }
+
+            let result31to33 = null;
+            let result34to36 = null;
+            let result37to40 = null;
+            let result31to40 = null;
+            let resultCumulative40 = null;
+
+            if (lines.length > 30) {
+                const lines31to33 = lines.slice(30, 33).join('\n');
+                result31to33 = countNumbers(lines31to33);
+
+                const lines34to36 = lines.slice(33, 36).join('\n');
+                result34to36 = countNumbers(lines34to36);
+
+                const lines37to40 = lines.slice(36, 40).join('\n');
+                result37to40 = countNumbers(lines37to40);
+
+                const lines31to40 = lines.slice(30, 40).join('\n');
+                result31to40 = countNumbers(lines31to40);
+
+                const allLines40 = lines.slice(0, 40).join('\n');
+                resultCumulative40 = countNumbers(allLines40);
+            }
+
+            let result41to43 = null;
+            let result44to46 = null;
+            let result47to50 = null;
+            let result41to50 = null;
+            let resultCumulative50 = null;
+
+            if (lines.length > 40) {
+                const lines41to43 = lines.slice(40, 43).join('\n');
+                result41to43 = countNumbers(lines41to43);
+
+                const lines44to46 = lines.slice(43, 46).join('\n');
+                result44to46 = countNumbers(lines44to46);
+
+                const lines47to50 = lines.slice(46, 50).join('\n');
+                result47to50 = countNumbers(lines47to50);
+
+                const lines41to50 = lines.slice(40, 50).join('\n');
+                result41to50 = countNumbers(lines41to50);
+
+                const allLines50 = lines.slice(0, 50).join('\n');
+                resultCumulative50 = countNumbers(allLines50);
+            }
+
+            results = {
+                first10: {
+                    section1: result1to3,
+                    section2: result4to6,
+                    section3: result7to10,
+                    all: result1to10
+                },
+                second10: result11to20 ? {
+                    section1: result11to13,
+                    section2: result14to16,
+                    section3: result17to20,
+                    all: result11to20,
+                    cumulative: resultCumulative20
+                } : null,
+                third10: result21to30 ? {
+                    section1: result21to23,
+                    section2: result24to26,
+                    section3: result27to30,
+                    all: result21to30,
+                    cumulative: resultCumulative30
+                } : null,
+                fourth10: result31to40 ? {
+                    section1: result31to33,
+                    section2: result34to36,
+                    section3: result37to40,
+                    all: result31to40,
+                    cumulative: resultCumulative40
+                } : null,
+                fifth10: result41to50 ? {
+                    section1: result41to43,
+                    section2: result44to46,
+                    section3: result47to50,
+                    all: result41to50,
+                    cumulative: resultCumulative50
+                } : null
+            };
+
+            renderResults();
+        }
+
+        function getGradientColor(count, minCount, maxCount) {
+            if (maxCount === 0) return 'rgb(96, 165, 250)';
+            
+            const ratio = count / maxCount;
+            let r, g, b;
+            
+            if (ratio <= 0.5) {
+                const normalizedRatio = ratio * 2;
+                r = Math.round(96 + (255 - 96) * normalizedRatio);
+                g = Math.round(165 + (255 - 165) * normalizedRatio);
+                b = Math.round(250 + (255 - 250) * normalizedRatio);
+            } else {
+                const normalizedRatio = (ratio - 0.5) * 2;
+                r = Math.round(255 + (239 - 255) * normalizedRatio);
+                g = Math.round(255 + (68 - 255) * normalizedRatio);
+                b = Math.round(255 + (68 - 255) * normalizedRatio);
+            }
+            
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        function renderTable(data, title, hasCumulative = false) {
+            if (!data) return '';
+
+            const circledNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩', '⑪', '⑫', '⑬', '⑭', '⑮', '⑯'];
+            
+            const getMax = (dataObj) => {
+                return Math.max(...Object.values(dataObj));
+            };
+            
+            const maxValues = {
+                section1: getMax(data.section1),
+                section2: getMax(data.section2),
+                section3: getMax(data.section3),
+                all: getMax(data.all)
+            };
+
+            if (hasCumulative && data.cumulative) {
+                maxValues.cumulative = getMax(data.cumulative);
+            }
+
+            const colWidth = hasCumulative ? '9%' : '11%';
+            const colWidthValue = hasCumulative ? '11%' : '14%';
+
+            let html = `
+                <div class="bg-white rounded-lg shadow-lg overflow-x-auto mb-4">
+                    <h3 class="text-base font-bold p-3 bg-gray-50 border-b">${title}</h3>
+                    <table class="w-full border-collapse text-sm table-fixed">
+                        <colgroup>
+                            <col style="width: ${colWidth}" />
+                            <col style="width: ${colWidthValue}" />
+                            <col style="width: ${colWidth}" />
+                            <col style="width: ${colWidthValue}" />
+                            <col style="width: ${colWidth}" />
+                            <col style="width: ${colWidthValue}" />
+                            <col style="width: ${colWidth}" />
+                            <col style="width: ${colWidthValue}" />
+                            ${hasCumulative ? `
+                                <col style="width: ${colWidth}" />
+                                <col style="width: ${colWidthValue}" />
+                            ` : ''}
+                        </colgroup>
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="border border-gray-300 px-2 py-2 text-center font-bold text-sm">첫부분</th>
+                                <th class="border border-gray-300 px-2 py-2"></th>
+                                <th class="border border-gray-300 px-2 py-2 text-center font-bold text-sm">중간</th>
+                                <th class="border border-gray-300 px-2 py-2"></th>
+                                <th class="border border-gray-300 px-2 py-2 text-center font-bold text-sm">아랫부분</th>
+                                <th class="border border-gray-300 px-2 py-2"></th>
+                                <th class="border border-gray-300 px-2 py-2 text-center font-bold text-sm">전체</th>
+                                <th class="border border-gray-300 px-2 py-2"></th>
+                                ${hasCumulative ? `
+                                    <th class="border border-gray-300 px-2 py-2 text-center font-bold text-sm bg-orange-100">누적전체</th>
+                                    <th class="border border-gray-300 px-2 py-2 bg-orange-100"></th>
+                                ` : ''}
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            circledNumbers.forEach(num => {
+                html += `
+                    <tr>
+                        <td class="border border-gray-300 px-2 py-2 text-center bg-yellow-300 text-2xl">${num}</td>
+                        <td class="border border-gray-300 px-2 py-2 text-center font-bold text-base" style="background-color: ${getGradientColor(data.section1[num], 0, maxValues.section1)}">${data.section1[num]}</td>
+                        <td class="border border-gray-300 px-2 py-2 text-center bg-yellow-300 text-2xl">${num}</td>
+                        <td class="border border-gray-300 px-2 py-2 text-center font-bold text-base" style="background-color: ${getGradientColor(data.section2[num], 0, maxValues.section2)}">${data.section2[num]}</td>
+                        <td class="border border-gray-300 px-2 py-2 text-center bg-yellow-300 text-2xl">${num}</td>
+                        <td class="border border-gray-300 px-2 py-2 text-center font-bold text-base" style="background-color: ${getGradientColor(data.section3[num], 0, maxValues.section3)}">${data.section3[num]}</td>
+                        <td class="border border-gray-300 px-2 py-2 text-center bg-yellow-300 text-2xl">${num}</td>
+                        <td class="border border-gray-300 px-2 py-2 text-center font-bold text-base" style="background-color: ${getGradientColor(data.all[num], 0, maxValues.all)}">${data.all[num]}</td>
+                        ${hasCumulative && data.cumulative ? `
+                            <td class="border border-gray-300 px-2 py-2 text-center bg-yellow-300 text-2xl">${num}</td>
+                            <td class="border border-gray-300 px-2 py-2 text-center font-bold text-base bg-orange-50" style="background-color: ${getGradientColor(data.cumulative[num], 0, maxValues.cumulative)}">${data.cumulative[num]}</td>
+                        ` : ''}
+                    </tr>
+                `;
+            });
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            return html;
+        }
+
+        function renderResults() {
+            let html = '<div>';
+
+            // 최저배당 (1 & 2)
+            if (lowestBetting) {
+                html += `
+                    <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg shadow-lg p-4 mb-3 border border-gray-200">
+                        <h3 class="text-lg font-bold mb-3 text-gray-800 flex items-center gap-2">
+                            📊 최저배당 (1 & 2)
+                        </h3>
+                        <div class="grid grid-cols-3 gap-3 mb-3">
+                            <div class="bg-white rounded-lg p-3 shadow text-center">
+                                <p class="text-xs text-gray-600 mb-2 font-semibold">최저배당1</p>
+                                <div class="flex justify-center gap-1 text-2xl mb-2">
+                                    ${lowestBetting.lowest1.pair.split('').map(char => `<span class="text-3xl">${char}</span>`).join('')}
+                                </div>
+                                <p class="text-xl font-bold text-gray-800">${lowestBetting.lowest1.dividend}</p>
+                            </div>
+                            <div class="bg-white rounded-lg p-3 shadow text-center">
+                                <p class="text-xs text-gray-600 mb-2 font-semibold">최저배당2</p>
+                                <div class="flex justify-center gap-1 text-2xl mb-2">
+                                    ${lowestBetting.lowest2.pair.split('').map(char => `<span class="text-3xl">${char}</span>`).join('')}
+                                </div>
+                                <p class="text-xl font-bold text-gray-800">${lowestBetting.lowest2.dividend}</p>
+                            </div>
+                            <div class="bg-white rounded-lg p-3 shadow text-center">
+                                <p class="text-xs text-gray-600 mb-2 font-semibold">교차점</p>
+                                ${lowestBetting.crossPoint ? `
+                                    <div class="flex justify-center gap-1 text-2xl mb-2">
+                                        ${lowestBetting.crossPoint.pair.split('').map(char => `<span class="text-3xl">${char}</span>`).join('')}
+                                    </div>
+                                    <p class="text-xl font-bold text-gray-800">${lowestBetting.crossPoint.dividend}</p>
+                                ` : '<p class="text-sm text-gray-400 mt-4">없음</p>'}
+                            </div>
+                        </div>
+                        ${lowestBetting.ratio ? `
+                            <div class="bg-yellow-50 rounded-lg p-3 border border-yellow-200">
+                                <p class="text-xs text-gray-700 mb-1 font-semibold">비율</p>
+                                <p class="text-2xl font-bold text-orange-600">${lowestBetting.ratio}</p>
+                                <p class="text-xs text-gray-600 mt-1">
+                                    = (${lowestBetting.lowest1.dividend} × ${lowestBetting.lowest2.dividend}) / ${lowestBetting.crossPoint.dividend}
+                                </p>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            // 상위 3개 짝 비중 (2 & 3)
+            if (topPairsAnalysis) {
+                html += `
+                    <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg shadow-lg p-4 mb-3 border border-gray-200">
+                        <h3 class="text-lg font-bold mb-3 text-gray-800 flex items-center gap-2">
+                            📈 상위 3개 짝 비중 (2 & 3)
+                        </h3>
+                        <div class="grid grid-cols-3 gap-3">
+                `;
+                
+                topPairsAnalysis.items.forEach(item => {
+                    html += `
+                        <div class="bg-white rounded-lg p-3 shadow text-center">
+                            <p class="text-xs text-gray-600 mb-2 font-semibold">${item.label}</p>
+                            <div class="flex justify-center gap-1 text-2xl mb-2">
+                                ${item.pair.split('').map(char => `<span class="text-3xl">${char}</span>`).join('')}
+                            </div>
+                            <p class="text-xl font-bold text-gray-800">${item.dividend}</p>
+                            <p class="text-lg font-bold text-green-600 mt-1">${item.proportion.toFixed(2)}%</p>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 전체 데이터 중 상위 3개 (3 & 4)
+            if (top3Analysis) {
+                html += `
+                    <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg shadow-lg p-4 mb-3 border border-gray-200">
+                        <h3 class="text-lg font-bold mb-3 text-gray-800 flex items-center gap-2">
+                            🎯 전체 데이터 중 상위 3개 (3 & 4)
+                        </h3>
+                        <div class="grid grid-cols-3 gap-3">
+                `;
+                
+                top3Analysis.items.forEach(item => {
+                    html += `
+                        <div class="bg-white rounded-lg p-3 shadow text-center">
+                            <p class="text-xs text-gray-600 mb-2 font-semibold">${item.rank}위</p>
+                            <div class="flex justify-center gap-1 text-2xl mb-2">
+                                ${item.pair.split('').map(char => `<span class="text-3xl">${char}</span>`).join('')}
+                            </div>
+                            <p class="text-xl font-bold text-gray-800">${item.dividend}</p>
+                            <p class="text-lg font-bold text-green-600 mt-1">${item.proportion.toFixed(2)}%</p>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 색상 안내
+            html += `
+                <div class="bg-white rounded-lg shadow-lg p-3 mb-3">
+                    <h3 class="text-sm font-bold mb-2 text-gray-700">색상 안내</h3>
+                    <div class="flex items-center gap-2 text-xs">
+                        <div class="flex items-center gap-1">
+                            <div class="w-5 h-5 bg-blue-400 rounded"></div>
+                            <span>0 (최저)</span>
+                        </div>
+                        <div class="flex-1 h-5 rounded" style="background: linear-gradient(to right, rgb(96, 165, 250), rgb(255, 255, 255), rgb(239, 68, 68))"></div>
+                        <div class="flex items-center gap-1">
+                            <div class="w-5 h-5 bg-red-500 rounded"></div>
+                            <span>최고</span>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-600 mt-2">각 구간별로 상대적인 빈도에 따라 색상이 그라데이션으로 표시됩니다. (최저: 파란색 → 중간: 하얀색 → 최고: 빨간색)</p>
+                </div>
+            `;
+
+            // 빈도 분석 테이블
+            html += renderTable(results.first10, "1-10줄 분석");
+            if (results.second10) html += renderTable(results.second10, "11-20줄 분석", true);
+            if (results.third10) html += renderTable(results.third10, "21-30줄 분석", true);
+            if (results.fourth10) html += renderTable(results.fourth10, "31-40줄 분석", true);
+            if (results.fifth10) html += renderTable(results.fifth10, "41-50줄 분석", true);
+
+            html += '</div>';
+
+            document.getElementById('results').innerHTML = html;
+        }
+    </script>
+</body>
+</html>
