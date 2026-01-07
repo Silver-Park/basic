@@ -738,14 +738,14 @@
                     </div>
                     <div class="summary" style="margin-top: 10px; background: #e8f5e9; border-left-color: #4caf50;">
                         <div class="summary-text" style="color: #2e7d32;">
-                            📊 비중 통계 분석<br/>
-                            • 평균: ${(summaryData.reduce((sum, d) => sum + d.sumRatio, 0) / summaryData.length).toFixed(2)}%<br/>
+                            📊 비중 통계 분석 (배당합계 기준)<br/>
+                            • 평균: ${(summaryData.reduce((sum, d) => sum + d.sumOdds, 0) / summaryData.length).toFixed(2)}<br/>
                             • 표준편차: ${(() => {
-                                const mean = summaryData.reduce((sum, d) => sum + d.sumRatio, 0) / summaryData.length;
-                                const variance = summaryData.reduce((sum, d) => sum + Math.pow(d.sumRatio - mean, 2), 0) / summaryData.length;
+                                const mean = summaryData.reduce((sum, d) => sum + d.sumOdds, 0) / summaryData.length;
+                                const variance = summaryData.reduce((sum, d) => sum + Math.pow(d.sumOdds - mean, 2), 0) / summaryData.length;
                                 return Math.sqrt(variance).toFixed(2);
-                            })()}%<br/>
-                            • 최대-최소 차이: ${(Math.max(...summaryData.map(d => d.sumRatio)) - Math.min(...summaryData.map(d => d.sumRatio))).toFixed(2)}%
+                            })()}<br/>
+                            • 최대-최소 차이: ${(Math.max(...summaryData.map(d => d.sumOdds)) - Math.min(...summaryData.map(d => d.sumOdds))).toFixed(2)}
                         </div>
                     </div>
                     <div class="chart-container">
@@ -932,15 +932,87 @@
                 return;
             }
 
+            // 파일명 입력 받기
+            const defaultFileName = `배당분석_${new Date().toISOString().slice(0, 10)}`;
+            const userFileName = prompt('파일명을 입력하세요 (확장자 제외):', defaultFileName);
+            
+            if (userFileName === null) {
+                return;
+            }
+            
+            const fileName = (userFileName.trim() || defaultFileName) + '.xlsx';
+
             try {
                 // 엑셀 데이터 생성
                 const ws_data = [];
+                
+                // 최대 숫자 개수 계산
+                let maxNumbers = 0;
+                analysisHistory.forEach(history => {
+                    if (history.crossPointSets && history.crossPointSets.length > 0) {
+                        // 각 history의 고유 숫자 개수 계산
+                        const uniqueNumbers = new Set();
+                        history.crossPointSets.forEach(set => {
+                            set.first.numbers.forEach(n => uniqueNumbers.add(n));
+                            set.second.numbers.forEach(n => uniqueNumbers.add(n));
+                            if (set.crossPoint && set.crossPoint.numbers) {
+                                set.crossPoint.numbers.forEach(n => uniqueNumbers.add(n));
+                            }
+                        });
+                        if (uniqueNumbers.size > maxNumbers) {
+                            maxNumbers = uniqueNumbers.size;
+                        }
+                    }
+                });
                 
                 // 헤더 1행
                 const header1 = ['', '', ''];
                 for (let i = 0; i < 3; i++) {
                     header1.push(`${i + 1}번째 짝`, '', '', '', '', '', '', '', '');
                 }
+                
+                // BA열까지 빈 칸 채우기 (BA = 53번째 열, 인덱스 52)
+                while (header1.length < 52) {
+                    header1.push('');
+                }
+                
+                // 숫자 (BA열)
+                header1.push('숫자');
+                
+                // 16칸 띄우기
+                const oddsHeaderIndex = 52 + 16;
+                while (header1.length < oddsHeaderIndex) {
+                    header1.push('');
+                }
+                
+                // 배당합계
+                header1.push('배당합계');
+                
+                // 16칸 띄우기
+                const ratioHeaderIndex = oddsHeaderIndex + 16;
+                while (header1.length < ratioHeaderIndex) {
+                    header1.push('');
+                }
+                
+                // 비중(%)
+                header1.push('비중(%)');
+                
+                // 16칸 띄우기
+                const statsHeaderIndex = ratioHeaderIndex + 16;
+                while (header1.length < statsHeaderIndex) {
+                    header1.push('');
+                }
+                
+                // 빈 칸 1개
+                header1.push('');
+                
+                // 비중 통계 분석 (1칸씩 띄우기)
+                header1.push('평균');
+                header1.push('');
+                header1.push('표준편차');
+                header1.push('');
+                header1.push('최대-최소차이');
+                
                 ws_data.push(header1);
                 
                 // 헤더 2행
@@ -948,12 +1020,40 @@
                 for (let i = 0; i < 3; i++) {
                     header2.push('1-1_번호', '1-2_번호', '배당', '2-1_번호', '2-2_번호', '배당', '교차점-1_번호', '교차점-2_번호', '배당');
                 }
+                
+                // BA열까지 빈 칸 채우기
+                while (header2.length < 52) {
+                    header2.push('');
+                }
+                
+                // 숫자들 (1, 2, 3, ...)
+                for (let i = 1; i <= maxNumbers; i++) {
+                    header2.push(i);
+                }
+                
+                // 16칸 띄우기 후 배당합계
+                while (header2.length < oddsHeaderIndex) {
+                    header2.push('');
+                }
+                for (let i = 1; i <= maxNumbers; i++) {
+                    header2.push(i);
+                }
+                
+                // 16칸 띄우기 후 비중
+                while (header2.length < ratioHeaderIndex) {
+                    header2.push('');
+                }
+                for (let i = 1; i <= maxNumbers; i++) {
+                    header2.push(i);
+                }
+                
                 ws_data.push(header2);
                 
                 // 데이터 행
                 analysisHistory.forEach((history, idx) => {
                     const row = ['', '', idx + 1];
                     
+                    // 교차점 분석 데이터
                     for (let i = 0; i < 3; i++) {
                         if (i < history.crossPointSets.length) {
                             const set = history.crossPointSets[i];
@@ -971,6 +1071,113 @@
                         } else {
                             row.push('', '', '', '', '', '', '', '', '');
                         }
+                    }
+                    
+                    // BA열까지 빈 칸 채우기
+                    while (row.length < 52) {
+                        row.push('');
+                    }
+                    
+                    // 숫자별 배당 합계 데이터 수집
+                    const numberSums = {};
+                    const numberCounts = {};
+                    history.crossPointSets.forEach(set => {
+                        // first 짝
+                        set.first.numbers.forEach(n => {
+                            if (!numberSums[n]) {
+                                numberSums[n] = 0;
+                                numberCounts[n] = 0;
+                            }
+                        });
+                        // second 짝
+                        set.second.numbers.forEach(n => {
+                            if (!numberSums[n]) {
+                                numberSums[n] = 0;
+                                numberCounts[n] = 0;
+                            }
+                        });
+                        // crossPoint
+                        if (set.crossPoint && set.crossPoint.numbers) {
+                            set.crossPoint.numbers.forEach(n => {
+                                if (!numberSums[n]) {
+                                    numberSums[n] = 0;
+                                    numberCounts[n] = 0;
+                                }
+                            });
+                        }
+                        
+                        // 배당 합산 (각 조합에서 해당 숫자가 포함된 만큼)
+                        set.first.numbers.forEach(n => {
+                            numberSums[n] += set.first.odds;
+                            numberCounts[n]++;
+                        });
+                        set.second.numbers.forEach(n => {
+                            numberSums[n] += set.second.odds;
+                            numberCounts[n]++;
+                        });
+                        if (set.crossPoint && set.crossPoint.odds) {
+                            set.crossPoint.numbers.forEach(n => {
+                                numberSums[n] += set.crossPoint.odds;
+                                numberCounts[n]++;
+                            });
+                        }
+                    });
+                    
+                    // 비중 낮은 순으로 정렬
+                    const totalOdds = Object.values(numberSums).reduce((sum, val) => sum + val, 0);
+                    const sortedNumbers = Object.keys(numberSums)
+                        .map(n => parseInt(n))
+                        .sort((a, b) => numberSums[a] - numberSums[b]);
+                    
+                    if (sortedNumbers.length > 0) {
+                        // 1. 숫자들
+                        sortedNumbers.forEach((num) => {
+                            row.push(num);
+                        });
+                        
+                        // 16칸 띄우기
+                        while (row.length < oddsHeaderIndex) {
+                            row.push('');
+                        }
+                        
+                        // 2. 배당합계들
+                        sortedNumbers.forEach((num) => {
+                            row.push(parseFloat(numberSums[num]).toFixed(1));
+                        });
+                        
+                        // 16칸 띄우기
+                        while (row.length < ratioHeaderIndex) {
+                            row.push('');
+                        }
+                        
+                        // 3. 비중들
+                        sortedNumbers.forEach((num) => {
+                            const ratio = (numberSums[num] / totalOdds * 100).toFixed(2);
+                            row.push(ratio);
+                        });
+                        
+                        // 16칸 띄우기
+                        while (row.length < statsHeaderIndex) {
+                            row.push('');
+                        }
+                        
+                        // 빈 칸 1개
+                        row.push('');
+                        
+                        // 4. 비중 통계 분석
+                        const oddsValues = sortedNumbers.map(num => numberSums[num]);
+                        const avg = oddsValues.reduce((a, b) => a + b, 0) / oddsValues.length;
+                        const variance = oddsValues.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / oddsValues.length;
+                        const stdDev = Math.sqrt(variance);
+                        const maxVal = Math.max(...oddsValues);
+                        const minVal = Math.min(...oddsValues);
+                        const diff = maxVal - minVal;
+                        
+                        row.push(avg.toFixed(2));
+                        row.push(''); // 1칸 띄우기
+                        row.push(stdDev.toFixed(2));
+                        row.push(''); // 1칸 띄우기
+                        row.push(diff.toFixed(2));
                     }
                     
                     ws_data.push(row);
@@ -998,10 +1205,9 @@
                 XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
                 
                 // 파일 다운로드
-                const fileName = `배당분석_${new Date().toISOString().slice(0, 10)}.xlsx`;
                 XLSX.writeFile(wb, fileName);
                 
-                alert(`${analysisHistory.length}개 회차가 엑셀로 저장되었습니다.`);
+                alert(`${analysisHistory.length}개 회차가 "${fileName}" 파일로 저장되었습니다.`);
             } catch (error) {
                 console.error('Excel export error:', error);
                 alert('엑셀 저장 중 오류가 발생했습니다.');
